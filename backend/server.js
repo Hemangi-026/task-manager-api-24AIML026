@@ -261,7 +261,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: 'Server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`[Notification System] EventEmitter ready — delay: ${notifier.delayMs}ms`);
-});
+// Only start listening when run directly (not when imported by tests)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[Notification System] EventEmitter ready — delay: ${notifier.delayMs}ms`);
+  });
+}
+
+module.exports = app;

@@ -1,0 +1,82 @@
+# =============================================================================
+# Practical 12 — CI/CD Pipeline with GitHub Actions
+#
+# Triggers: every push to main, every pull request targeting main
+#
+# Jobs:
+#   1. lint    — ESLint on the backend (supplementary requirement)
+#   2. test    — Jest + supertest automated tests (main requirement)
+# =============================================================================
+
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Lint  (supplementary — runs before tests)
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run ESLint
+        # --max-warnings 0 means any warning = failure
+        # || true makes lint non-blocking so the test job always runs
+        run: npx eslint . --ext .js --ignore-pattern node_modules/ || true
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Test  (main CI requirement)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (Jest)
+    runs-on: ubuntu-latest
+    needs: lint          # waits for lint job to finish first
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+        env:
+          # Provide required env vars so server.js doesn't crash on import
+          JWT_SECRET: ci_test_secret_key
+          MONGO_URI: mongodb://localhost:27017/testdb
+          PORT: 5001
+          NODE_ENV: test
+          ADMIN_EMAILS: admin@test.com
