@@ -371,3 +371,101 @@ body {
   from { transform: translateY(10px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+
+/* ---- Tasks page header ---- */
+.tasks-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.tasks-header h1 { margin: 0 0 0.25rem; }
+
+/* ---- Stats toggle button ---- */
+.btn-stats {
+  background: #f0f4ff;
+  color: #3457d5;
+  border: 1px solid #c5d0f5;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.btn-stats:hover { background: #e0e8ff; }
+.btn-stats--active { background: #3457d5; color: #fff; border-color: #3457d5; }
+
+/* ---- Complete button ---- */
+.btn-complete {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+}
+.btn-complete:hover { background: #c8e6c9; }
+
+/* ---- Task form (updated layout) ---- */
+.task-form-main {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.task-form-main input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.btn-add {
+  align-self: flex-end;
+  white-space: nowrap;
+}
+
+/* ---- Task card extras ---- */
+.task-desc { color: #6b6b6b; font-size: 0.9rem; }
+.task-creator-role { color: #aaa; font-weight: 400; }
+
+/* ---- Stats panel ---- */
+.stats-panel {
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stats-title {
+  margin: 0 0 1.25rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.stats-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.stats-chart-box h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stats-summary {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: #888;
+  text-align: center;
+}
+
+.stats-empty {
+  color: #aaa;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 1rem 0;
+}

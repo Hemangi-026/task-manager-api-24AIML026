@@ -1,71 +1,60 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Spinner from '../components/spinner';
 import ErrorMessage from '../components/errormessage';
 import Toast from '../components/toast';
+import TaskCard from '../components/TaskCard';
 import { useAuth } from '../context/AuthContext';
 import { getTasks, createTask, updateTask, deleteTask } from '../api';
 
-const PRIORITY_LABEL = { low: 'Low', medium: 'Medium', high: 'High' };
-
-function formatDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
+/**
+ * TaskStats is lazy-loaded — recharts (~180 kB) is NOT in the main bundle.
+ * Vite emits it as a separate chunk downloaded only when the user clicks
+ * "Show Stats" for the first time.
+ */
+const TaskStats = lazy(() => import('../components/TaskStats'));
 
 function Tasks() {
   const { isAuthenticated, loading: authLoading, logout, user } = useAuth();
   const navigate = useNavigate();
 
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [tasks, setTasks]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [showStats, setShowStats]   = useState(false);
 
-  // Create-task form state
-  const [title, setTitle] = useState('');
+  // Create-task form
+  const [title, setTitle]           = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('medium');
-  const [dueDate, setDueDate] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [priority, setPriority]     = useState('medium');
+  const [dueDate, setDueDate]       = useState('');
+  const [creating, setCreating]     = useState(false);
 
   const [busyTaskId, setBusyTaskId] = useState(null);
+  const [toast, setToast]           = useState(null);
 
-  const [toast, setToast] = useState(null);
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
   const handleAuthFailure = (err) => {
-    if (err.status === 401) {
-      logout();
-      navigate('/login');
-      return true;
-    }
+    if (err.status === 401) { logout(); navigate('/login'); return true; }
     return false;
   };
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      navigate('/login');
-    }
+    if (!authLoading && !isAuthenticated) navigate('/login');
   }, [authLoading, isAuthenticated, navigate]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
     setLoading(true);
     setError(null);
-
     getTasks()
       .then((res) => setTasks(res.data))
-      .catch((err) => {
-        if (!handleAuthFailure(err)) setError(err.message);
-      })
+      .catch((err) => { if (!handleAuthFailure(err)) setError(err.message); })
       .finally(() => setLoading(false));
   }, [retryCount, isAuthenticated]);
 
@@ -74,7 +63,7 @@ function Tasks() {
   // ---------- Create (optimistic) ----------
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !priority) return;
+    if (!title.trim()) return;
 
     const optimisticTask = {
       _id: `temp-${Date.now()}`,
@@ -88,10 +77,7 @@ function Tasks() {
 
     setTasks((prev) => [optimisticTask, ...prev]);
     setCreating(true);
-    setTitle('');
-    setDescription('');
-    setPriority('medium');
-    setDueDate('');
+    setTitle(''); setDescription(''); setPriority('medium'); setDueDate('');
 
     try {
       const res = await createTask({
@@ -100,54 +86,44 @@ function Tasks() {
         priority: optimisticTask.priority,
         dueDate: optimisticTask.dueDate,
       });
-      setTasks((prev) =>
-        prev.map((t) => (t._id === optimisticTask._id ? res.data : t))
-      );
-      showToast('Task created successfully');
+      setTasks((prev) => prev.map((t) => (t._id === optimisticTask._id ? res.data : t)));
+      showToast('Task created ✓');
     } catch (err) {
       setTasks((prev) => prev.filter((t) => t._id !== optimisticTask._id));
-      if (!handleAuthFailure(err)) {
-        showToast(`Failed to create task: ${err.message}`, 'error');
-      }
+      if (!handleAuthFailure(err)) showToast(`Failed: ${err.message}`, 'error');
     } finally {
       setCreating(false);
     }
   };
 
-  // ---------- Toggle completed ----------
-  const handleToggleCompleted = async (task) => {
+  // ---------- Toggle (useCallback — stable ref for TaskCard memo) ----------
+  const handleToggle = useCallback(async (task) => {
     setBusyTaskId(task._id);
     try {
       const res = await updateTask(task._id, { completed: !task.completed });
       setTasks((prev) => prev.map((t) => (t._id === task._id ? res.data : t)));
       showToast('Task updated');
     } catch (err) {
-      if (!handleAuthFailure(err)) {
-        showToast(`Failed to update task: ${err.message}`, 'error');
-      }
+      if (!handleAuthFailure(err)) showToast(`Failed: ${err.message}`, 'error');
     } finally {
       setBusyTaskId(null);
     }
-  };
+  }, []);
 
   // ---------- Delete ----------
-  const handleDelete = async (task) => {
-    const confirmed = window.confirm(`Delete "${task.title}"? This can't be undone.`);
-    if (!confirmed) return;
-
+  const handleDelete = useCallback(async (task) => {
+    if (!window.confirm(`Delete "${task.title}"? This can't be undone.`)) return;
     setBusyTaskId(task._id);
     try {
       await deleteTask(task._id);
       setTasks((prev) => prev.filter((t) => t._id !== task._id));
       showToast('Task deleted');
     } catch (err) {
-      if (!handleAuthFailure(err)) {
-        showToast(`Failed to delete task: ${err.message}`, 'error');
-      }
+      if (!handleAuthFailure(err)) showToast(`Failed: ${err.message}`, 'error');
     } finally {
       setBusyTaskId(null);
     }
-  };
+  }, []);
 
   if (authLoading || !isAuthenticated) return <Spinner />;
   if (loading) return <Spinner />;
@@ -155,42 +131,57 @@ function Tasks() {
 
   return (
     <section className="tasks-page">
-      <h1>Tasks</h1>
-      <p className="subtitle">
-        Anyone signed in can leave a task here — the owner will see it along with your name and role.
-      </p>
+      {/* ---- Header row ---- */}
+      <div className="tasks-header">
+        <div>
+          <h1>Tasks</h1>
+          <p className="subtitle">
+            Anyone signed in can leave a task — the owner sees your name and role.
+          </p>
+        </div>
+        <button
+          className={`btn btn-stats ${showStats ? 'btn-stats--active' : ''}`}
+          onClick={() => setShowStats((s) => !s)}
+        >
+          {showStats ? 'Hide Stats' : '📊 Stats'}
+        </button>
+      </div>
+
+      {/* ---- Lazy-loaded stats panel ---- */}
+      {showStats && (
+        <Suspense fallback={<Spinner />}>
+          <TaskStats tasks={tasks} />
+        </Suspense>
+      )}
 
       {/* ---- Create form ---- */}
-      <form className="task-form task-form--full" onSubmit={handleCreate}>
-        <input
-          type="text"
-          placeholder="Task title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-        <input
-          type="text"
-          placeholder="Description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
+      <form className="task-form" onSubmit={handleCreate}>
+        <div className="task-form-main">
+          <input
+            type="text"
+            placeholder="Task title *"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
         <div className="task-form-row">
           <div className="task-form-field">
-            <label htmlFor="priority">Priority *</label>
-            <select
-              id="priority"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              required
-            >
+            <label htmlFor="priority">Priority</label>
+            <select id="priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
             </select>
           </div>
           <div className="task-form-field">
-            <label htmlFor="dueDate">Due date (optional)</label>
+            <label htmlFor="dueDate">Due date</label>
             <input
               id="dueDate"
               type="date"
@@ -198,10 +189,10 @@ function Tasks() {
               onChange={(e) => setDueDate(e.target.value)}
             />
           </div>
+          <button type="submit" className="btn btn-add" disabled={creating}>
+            {creating ? 'Adding…' : '+ Add Task'}
+          </button>
         </div>
-        <button type="submit" className="btn" disabled={creating}>
-          {creating ? 'Adding...' : 'Add Task'}
-        </button>
       </form>
 
       {/* ---- Task list ---- */}
@@ -209,59 +200,16 @@ function Tasks() {
         <p className="no-results">No tasks yet — add one above.</p>
       ) : (
         <div className="task-grid">
-          {tasks.map((task) => {
-            const isOwner =
-              user &&
-              task.createdBy &&
-              (task.createdBy._id === user.id || task.createdBy.id === user.id);
-            const creatorName = task.createdBy?.name || 'Unknown';
-            const creatorRole = task.createdBy?.role;
-
-            return (
-              <div className="task-card" key={task._id}>
-                <div className={`priority-badge priority-badge--${task.priority}`}>
-                  {PRIORITY_LABEL[task.priority] || task.priority}
-                </div>
-
-                <h3 style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
-                  {task.title}
-                </h3>
-                <p>{task.description || 'No description.'}</p>
-
-                {task.dueDate && (
-                  <p className="task-due">Due {formatDate(task.dueDate)}</p>
-                )}
-
-                <p className="task-creator">
-                  Created by <strong>{creatorName}</strong>
-                  {creatorRole ? ` (${creatorRole})` : ''}
-                </p>
-
-                <div className="task-actions">
-                  <button
-                    className="btn btn-outline"
-                    disabled={busyTaskId === task._id}
-                    onClick={() => handleToggleCompleted(task)}
-                  >
-                    {busyTaskId === task._id
-                      ? 'Working...'
-                      : task.completed
-                      ? 'Mark incomplete'
-                      : 'Mark complete'}
-                  </button>
-                  {isOwner && (
-                    <button
-                      className="btn btn-danger"
-                      disabled={busyTaskId === task._id}
-                      onClick={() => handleDelete(task)}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {tasks.map((task) => (
+            <TaskCard
+              key={task._id}
+              task={task}
+              user={user}
+              busyTaskId={busyTaskId}
+              onToggle={handleToggle}
+              onDelete={handleDelete}
+            />
+          ))}
         </div>
       )}
 
