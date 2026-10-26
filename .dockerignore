@@ -1,0 +1,10 @@
+# Ignore everything by default; docker-compose uses per-subfolder contexts
+**/node_modules/
+**/dist/
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+.git/
+.gitignore
+docs/

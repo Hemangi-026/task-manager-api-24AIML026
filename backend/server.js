@@ -23,11 +23,19 @@ app.use(cors());
 app.use(express.json());
 
 // ================================
-// 1. DATABASE CONNECTION
+// 1. DATABASE CONNECTION (with retry for Docker startup ordering)
 // ================================
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB Connected Successfully'))
-  .catch((err) => console.error('MongoDB Connection Error:', err.message));
+const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/taskdb';
+
+const connectDB = () => {
+  mongoose.connect(mongoUri)
+    .then(() => console.log('MongoDB Connected Successfully'))
+    .catch((err) => {
+      console.error('MongoDB connection error, retrying in 3s...', err.message);
+      setTimeout(connectDB, 3000);
+    });
+};
+connectDB();
 
 // ================================
 // 2. AUTH ROUTES (public)
