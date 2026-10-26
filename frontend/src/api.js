@@ -82,3 +82,10 @@ export const deleteTask = (id) =>
   request(`/tasks/${id}`, {
     method: 'DELETE',
   });
+
+// ---------- AI (Practical 13) ----------
+export const getAiSuggestion = (title) =>
+  request('/api/ai/suggest', {
+    method: 'POST',
+    body: JSON.stringify({ title }),
+  });

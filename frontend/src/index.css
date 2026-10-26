@@ -1730,3 +1730,112 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* ============================================================
+   PRACTICAL 13 — AI SUGGESTION STYLES
+   ============================================================ */
+
+/* Title row with AI button */
+.task-form-title-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.task-form-title-row input {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* AI Suggest button */
+.btn-ai {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  white-space: nowrap;
+  border: none;
+  font-size: 0.85rem;
+  padding: 0.55rem 1rem;
+}
+
+.btn-ai:hover:not(:disabled) { background: linear-gradient(135deg, #4f46e5, #7c3aed); }
+.btn-ai:disabled              { opacity: 0.6; cursor: not-allowed; }
+
+/* AI disclaimer banner */
+.ai-disclaimer {
+  background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+  border: 1px solid #a78bfa;
+  border-radius: 8px;
+  padding: 0.65rem 1rem;
+  font-size: 0.85rem;
+  color: #4c1d95;
+}
+
+[data-theme="dark"] .ai-disclaimer {
+  background: #1e1b4b;
+  border-color: #6366f1;
+  color: #c4b5fd;
+}
+
+/* Fallback / error message */
+.ai-fallback {
+  background: var(--bg);
+  border: 1px dashed var(--border-input);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+
+/* Reason message */
+.ai-reason {
+  font-size: 0.82rem;
+  color: #6366f1;
+  padding: 0.3rem 0.5rem;
+}
+
+[data-theme="dark"] .ai-reason { color: #a5b4fc; }
+
+/* Highlight AI-filled fields */
+.ai-filled {
+  border-color: #a78bfa !important;
+  background: #faf5ff !important;
+}
+
+[data-theme="dark"] .ai-filled {
+  border-color: #6366f1 !important;
+  background: #1e1b4b !important;
+}
+
+/* AI tag badge next to label */
+.ai-tag {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #ede9fe;
+  color: #6366f1;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+}
+
+[data-theme="dark"] .ai-tag { background: #1e1b4b; color: #a5b4fc; }
+
+/* Textarea in task form */
+.task-form textarea {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.task-form textarea:focus {
+  outline: 2px solid var(--accent);
+  border-color: var(--accent);
+}

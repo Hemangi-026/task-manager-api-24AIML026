@@ -13,6 +13,13 @@ const { cache, recordHit, recordMiss, getStats } = require('./utils/cache');
 // Practical 10: EventEmitter-based background notification system
 const notifier = require('./utils/notificationEmitter');
 
+// Practical 13: Gemini AI integration
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// Simple in-memory rate limiter: max 1 AI request per title per 60s
+const aiRateLimitMap = new Map();
+const AI_RATE_LIMIT_MS = 60 * 1000;
+
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
@@ -247,7 +254,86 @@ app.post('/notifications/simulate-error', auth, (req, res) => {
 });
 
 // ================================
-// 6. ERROR HANDLER (must stay last)
+// 6. AI ENDPOINT — Practical 13
+// POST /api/ai/suggest
+// Accepts { title } — returns AI-generated description + priority suggestion
+// API key is ONLY used here on the backend, never sent to the frontend.
+// ================================
+app.post('/api/ai/suggest', auth, async (req, res) => {
+  const { title } = req.body;
+
+  if (!title || title.trim().length < 3) {
+    return res.status(400).json({ success: false, message: 'Title must be at least 3 characters' });
+  }
+
+  // ---- Rate limit: 1 AI request per title per 60 s ----
+  const key      = `${req.user.id}:${title.trim().toLowerCase()}`;
+  const lastCall = aiRateLimitMap.get(key);
+  if (lastCall && Date.now() - lastCall < AI_RATE_LIMIT_MS) {
+    const waitSec = Math.ceil((AI_RATE_LIMIT_MS - (Date.now() - lastCall)) / 1000);
+    return res.status(429).json({
+      success: false,
+      message: `Rate limited — please wait ${waitSec}s before requesting another suggestion for this title.`,
+    });
+  }
+  aiRateLimitMap.set(key, Date.now());
+
+  // ---- Call Gemini API ----
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+    // Graceful degradation — AI not configured, app keeps working
+    return res.json({
+      success: true,
+      fallback: true,
+      description: '',
+      priority: 'medium',
+      message: 'AI suggestions are not configured. Add GEMINI_API_KEY to .env to enable this feature.',
+    });
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const prompt = `You are a task management assistant. Given the task title below, provide:
+1. A short, clear task description (1-2 sentences, practical and actionable)
+2. A suggested priority level (must be exactly one of: low, medium, high)
+
+Task title: "${title.trim()}"
+
+Respond in this exact JSON format (no markdown, no code blocks):
+{"description":"your description here","priority":"low|medium|high","reason":"brief reason for priority"}`;
+
+    const result   = await model.generateContent(prompt);
+    const text     = result.response.text().trim();
+
+    // Parse JSON response — handle cases where Gemini wraps in markdown
+    const jsonStr  = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed   = JSON.parse(jsonStr);
+
+    return res.json({
+      success:     true,
+      fallback:    false,
+      description: parsed.description || '',
+      priority:    ['low', 'medium', 'high'].includes(parsed.priority) ? parsed.priority : 'medium',
+      reason:      parsed.reason || '',
+    });
+  } catch (err) {
+    console.error('[AI] Gemini API error:', err.message);
+    // Graceful degradation — AI failed, return empty suggestion, app keeps working
+    return res.json({
+      success:     true,
+      fallback:    true,
+      description: '',
+      priority:    'medium',
+      message:     'AI suggestion unavailable right now. You can still create the task manually.',
+    });
+  }
+});
+
+// ================================
+// 7. ERROR HANDLER (must stay last)
 // ================================
 app.use((err, req, res, next) => {
   console.error(err.stack);

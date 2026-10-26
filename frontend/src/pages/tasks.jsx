@@ -5,7 +5,7 @@ import ErrorMessage from '../components/errormessage';
 import Toast from '../components/toast';
 import TaskCard from '../components/TaskCard';
 import { useAuth } from '../context/AuthContext';
-import { getTasks, createTask, updateTask, deleteTask } from '../api';
+import { getTasks, createTask, updateTask, deleteTask, getAiSuggestion } from '../api';
 
 // recharts chunk — downloaded only when user clicks "📊 Stats"
 const TaskStats = lazy(() => import('../components/TaskStats'));
@@ -25,6 +25,11 @@ function Tasks() {
   const [priority, setPriority]       = useState('medium');
   const [dueDate, setDueDate]         = useState('');
   const [creating, setCreating]       = useState(false);
+
+  // ---- Practical 13: AI suggestion state ----
+  const [aiLoading, setAiLoading]       = useState(false);
+  const [aiSuggested, setAiSuggested]   = useState(false); // true when field came from AI
+  const [aiMessage, setAiMessage]       = useState('');    // fallback or error message
 
   const [busyTaskId, setBusyTaskId] = useState(null);
   const [toast, setToast]           = useState(null);
@@ -55,6 +60,42 @@ function Tasks() {
 
   const handleRetry = () => setRetryCount((c) => c + 1);
 
+  // ---- Practical 13: Ask Gemini for description + priority ----
+  const handleAiSuggest = async () => {
+    if (!title.trim() || title.trim().length < 3) {
+      showToast('Enter at least 3 characters in the title first', 'error');
+      return;
+    }
+    setAiLoading(true);
+    setAiMessage('');
+    setAiSuggested(false);
+
+    try {
+      const res = await getAiSuggestion(title.trim());
+
+      if (res.fallback) {
+        // Graceful degradation — AI unavailable, app keeps working
+        setAiMessage(res.message || 'AI suggestion unavailable. You can still fill in manually.');
+      } else {
+        // Apply AI suggestions — user can edit them before submitting
+        if (res.description) setDescription(res.description);
+        if (res.priority)    setPriority(res.priority);
+        setAiSuggested(true);
+        setAiMessage(res.reason ? `AI reasoning: ${res.reason}` : '');
+        showToast('✨ AI suggestion applied — review and edit before submitting');
+      }
+    } catch (err) {
+      // Graceful degradation — network/auth error, app keeps working
+      if (err.status === 429) {
+        setAiMessage(err.message || 'Rate limited — wait a moment before trying again.');
+      } else {
+        setAiMessage('AI suggestion failed. You can still create the task manually.');
+      }
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -72,6 +113,7 @@ function Tasks() {
     setTasks((prev) => [optimisticTask, ...prev]);
     setCreating(true);
     setTitle(''); setDescription(''); setPriority('medium'); setDueDate('');
+    setAiSuggested(false); setAiMessage('');
 
     try {
       const res = await createTask({
@@ -159,24 +201,64 @@ function Tasks() {
       {/* ---- Create form ---- */}
       <form className="task-form" onSubmit={handleCreate}>
         <div className="task-form-main">
-          <input
-            type="text"
-            placeholder="Task title *"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Description (optional)"
+          {/* Title + AI button side by side */}
+          <div className="task-form-title-row">
+            <input
+              type="text"
+              placeholder="Task title *"
+              value={title}
+              onChange={(e) => { setTitle(e.target.value); setAiSuggested(false); setAiMessage(''); }}
+              required
+            />
+            <button
+              type="button"
+              className="btn btn-ai"
+              onClick={handleAiSuggest}
+              disabled={aiLoading || !title.trim()}
+              title="Ask Gemini AI to suggest a description and priority"
+            >
+              {aiLoading ? '⏳ Thinking…' : '✨ AI Suggest'}
+            </button>
+          </div>
+
+          {/* AI disclaimer — shown when description came from AI */}
+          {aiSuggested && (
+            <div className="ai-disclaimer">
+              🤖 <strong>AI-generated suggestion</strong> — please review and edit before submitting.
+              The description and priority below were suggested by Gemini AI.
+            </div>
+          )}
+
+          {/* Fallback / rate limit message */}
+          {aiMessage && !aiSuggested && (
+            <div className="ai-fallback">{aiMessage}</div>
+          )}
+
+          {/* Reason message */}
+          {aiMessage && aiSuggested && (
+            <div className="ai-reason">💡 {aiMessage}</div>
+          )}
+
+          <textarea
+            placeholder="Description (optional — or use AI Suggest above)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            className={aiSuggested ? 'ai-filled' : ''}
           />
         </div>
+
         <div className="task-form-row">
           <div className="task-form-field">
-            <label htmlFor="priority">Priority</label>
-            <select id="priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <label htmlFor="priority">
+              Priority {aiSuggested && <span className="ai-tag">AI</span>}
+            </label>
+            <select
+              id="priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className={aiSuggested ? 'ai-filled' : ''}
+            >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
