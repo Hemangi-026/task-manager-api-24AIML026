@@ -1,85 +1,112 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import SessionTimer from './SessionTimer';
+
+function getRoleLabel(user) {
+  if (!user) return null;
+  if (user.isAdmin) return { label: 'ADMIN', cls: 'role-admin' };
+  return { label: 'USER', cls: 'role-user' };
+}
 
 function NavBar({ darkMode, setDarkMode }) {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  const handleLogout = () => { logout(); navigate('/login'); };
+  const role = getRoleLabel(user);
 
   return (
-    <nav className="navbar">
-      <Link to="/" className="navbar-brand">
-        <span className="navbar-brand-icon">✅</span>
-        Task Manager
-      </Link>
+    <header className="topbar">
+      <div className="topbar__inner">
 
-      <div className="navbar-links">
-        {/* Always visible */}
-        <NavLink to="/" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'} end>
-          Tasks
-        </NavLink>
-        <NavLink to="/projects" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          Projects
-        </NavLink>
-        <NavLink to="/contact" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          Contact
-        </NavLink>
+        {/* ---- Brand ---- */}
+        <Link to={isAuthenticated ? '/dashboard' : '/login'} className="topbar-brand">
+          <div className="topbar-brand__icon">✅</div>
+          <div className="topbar-brand__text">
+            <span className="topbar-brand__name">TaskManager</span>
+            <span className="topbar-brand__version">v1.0</span>
+          </div>
+        </Link>
 
-        {/* Admin only */}
-        {isAuthenticated && user?.isAdmin && (
-          <NavLink
-            to="/admin"
-            className={({ isActive }) => isActive ? 'nav-link nav-admin active' : 'nav-link nav-admin'}
-          >
-            ⚡ Admin
-          </NavLink>
+        {/* ---- Nav links (only when logged in) ---- */}
+        {isAuthenticated && (
+          <nav className="topbar-nav">
+            <NavLink to="/dashboard" className={({ isActive }) => `topbar-nav__item ${isActive ? 'topbar-nav__item--active' : ''}`}>
+              <span className="topbar-nav__icon">⊞</span> Dashboard
+            </NavLink>
+            <NavLink to="/" className={({ isActive }) => `topbar-nav__item ${isActive ? 'topbar-nav__item--active' : ''}`} end>
+              <span className="topbar-nav__icon">📁</span> Tasks &amp; Projects
+            </NavLink>
+            <NavLink to="/analytics" className={({ isActive }) => `topbar-nav__item ${isActive ? 'topbar-nav__item--active' : ''}`}>
+              <span className="topbar-nav__icon">📊</span> Analytics <span className="topbar-nav__lazy">(Lazy)</span>
+            </NavLink>
+            <NavLink to="/contact" className={({ isActive }) => `topbar-nav__item ${isActive ? 'topbar-nav__item--active' : ''}`}>
+              <span className="topbar-nav__icon">✉️</span> Contact
+            </NavLink>
+            {user?.isAdmin && (
+              <NavLink to="/admin" className={({ isActive }) => `topbar-nav__item topbar-nav__item--admin ${isActive ? 'topbar-nav__item--active' : ''}`}>
+                <span className="topbar-nav__icon">⚡</span> Admin
+              </NavLink>
+            )}
+          </nav>
         )}
 
-        {/* Auth links */}
-        {isAuthenticated ? (
-          <>
-            <NavLink
-              to="/profile"
-              className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}
-            >
-              <span className="nav-avatar">
-                {(user?.name?.[0] || 'U').toUpperCase()}
-              </span>
-              {user?.name || 'Profile'}
-            </NavLink>
-            <button className="nav-link nav-link--button nav-logout" onClick={handleLogout}>
-              Logout
-            </button>
-          </>
-        ) : (
-          <>
-            <NavLink to="/login" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-              Login
-            </NavLink>
-            <NavLink
-              to="/register"
-              className={({ isActive }) => isActive ? 'nav-link active nav-register' : 'nav-link nav-register'}
-            >
-              Register
-            </NavLink>
-          </>
-        )}
+        {/* ---- Right side ---- */}
+        <div className="topbar-actions">
+          {isAuthenticated && user ? (
+            <>
+              {/* Session timer */}
+              <SessionTimer onExpire={handleLogout} />
 
-        {/* Dark/Light toggle */}
-        <button
-          className="theme-toggle"
-          onClick={() => setDarkMode((d) => !d)}
-          aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-          title={darkMode ? 'Light mode' : 'Dark mode'}
-        >
-          {darkMode ? '☀️' : '🌙'}
-        </button>
+              {/* Role badge */}
+              {role && (
+                <span className={`topbar-role ${role.cls}`}>
+                  {role.label}
+                </span>
+              )}
+
+              {/* Username */}
+              <NavLink to="/profile" className="topbar-username">
+                <span className="topbar-avatar">
+                  {(user.name?.[0] || 'U').toUpperCase()}
+                </span>
+                {user.name || 'Profile'}
+              </NavLink>
+
+              {/* Theme toggle */}
+              <button
+                className="topbar-theme-btn"
+                onClick={() => setDarkMode((d) => !d)}
+                aria-label="Toggle theme"
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+
+              {/* Logout */}
+              <button className="topbar-logout" onClick={handleLogout}>
+                ↪ Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="topbar-theme-btn"
+                onClick={() => setDarkMode((d) => !d)}
+                aria-label="Toggle theme"
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+              <NavLink to="/login" className="btn btn-outline" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
+                Login
+              </NavLink>
+              <NavLink to="/register" className="btn" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
+                Register
+              </NavLink>
+            </>
+          )}
+        </div>
       </div>
-    </nav>
+    </header>
   );
 }
 
