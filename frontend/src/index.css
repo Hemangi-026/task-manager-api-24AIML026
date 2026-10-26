@@ -1211,3 +1211,119 @@ body {
   font-size: 1.1rem;
   color: var(--text);
 }
+
+/* ============================================================
+   DATE-RANGE REPORT
+   ============================================================ */
+.report-header   { margin-bottom: 1rem; }
+.report-header h2 { margin: 0 0 0.2rem; font-size: 1.1rem; color: var(--text); }
+.report-subtitle  { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+
+.report-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.report-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.report-date-group label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.report-date-group input[type="date"] {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 0.9rem;
+  min-width: 150px;
+}
+
+.report-date-group input[type="date"]:focus {
+  outline: 2px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-report {
+  background: #7c3aed;
+  color: #fff;
+  padding: 0.6rem 1.4rem;
+  align-self: flex-end;
+}
+.btn-report:hover { background: #6d28d9; }
+
+/* Quick preset buttons */
+.report-presets {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.preset-btn {
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--border-input);
+  border-radius: 20px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.preset-btn:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Summary row */
+.report-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.report-summary-counts {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.report-count {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.report-count strong { color: var(--text); font-size: 1rem; margin-right: 0.2rem; }
+.report-count--green strong { color: #2e7d32; }
+.report-count--orange strong { color: #e65100; }
+[data-theme="dark"] .report-count--green strong  { color: #66bb6a; }
+[data-theme="dark"] .report-count--orange strong { color: #ffa726; }
+
+/* CSV download button */
+.btn-csv {
+  font-size: 0.85rem;
+  padding: 0.45rem 1rem;
+  white-space: nowrap;
+}
+
+/* Report table — same as admin-table but a little tighter */
+.report-table td { font-size: 0.85rem; }

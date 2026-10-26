@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getTasks, deleteTask } from '../api';
@@ -21,6 +21,29 @@ async function fetchCacheStats(token) {
 
 const PRIORITY_COLOR = { low: '#4caf50', medium: '#ff9800', high: '#f44336' };
 
+// ---- CSV download helper ----
+function downloadCSV(rows, filename = 'report.csv') {
+  const headers = ['Task', 'Status', 'Priority', 'Created By', 'Created', 'Completed'];
+  const lines = [
+    headers.join(','),
+    ...rows.map((t) => [
+      `"${t.title.replace(/"/g, '""')}"`,
+      t.completed ? 'Completed' : 'Pending',
+      t.priority,
+      `"${(t.createdBy?.name || '').replace(/"/g, '""')}"`,
+      t.createdAt ? new Date(t.createdAt).toISOString().slice(0, 10) : '',
+      t.completed && t.updatedAt ? new Date(t.updatedAt).toISOString().slice(0, 10) : '—',
+    ].join(',')),
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function AdminDashboard() {
   const { user, token, isAuthenticated, loading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
@@ -38,6 +61,15 @@ function AdminDashboard() {
   const [filterStatus, setFilterStatus]     = useState('all');
   const [sortBy, setSortBy]                 = useState('newest');
   const [search, setSearch]                 = useState('');
+
+  // Date-range report state
+  const today    = new Date().toISOString().slice(0, 10);
+  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    .toISOString().slice(0, 10);
+  const [reportFrom, setReportFrom]       = useState(firstOfMonth);
+  const [reportTo, setReportTo]           = useState(today);
+  const [reportRows, setReportRows]       = useState(null); // null = not generated yet
+  const [reportGenerated, setReportGen]   = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToast({ message: msg, type });
@@ -73,7 +105,7 @@ function AdminDashboard() {
       .finally(() => setLoading(false));
   }, [isAuthenticated, user]);
 
-  const handleDelete = async (task) => {
+  const handleDelete = useCallback(async (task) => {
     if (!window.confirm(`Delete "${task.title}"?`)) return;
     setBusyId(task._id);
     try {
@@ -85,6 +117,22 @@ function AdminDashboard() {
     } finally {
       setBusyId(null);
     }
+  }, []);
+
+  // ---- Generate date-range report ----
+  const handleGenerateReport = () => {
+    const from = new Date(reportFrom);
+    const to   = new Date(reportTo);
+    to.setHours(23, 59, 59, 999); // include the whole "to" day
+
+    const rows = tasks.filter((t) => {
+      if (!t.createdAt) return false;
+      const created = new Date(t.createdAt);
+      return created >= from && created <= to;
+    });
+
+    setReportRows(rows);
+    setReportGen(true);
   };
 
   if (authLoading || !isAuthenticated || !user?.isAdmin) return <Spinner />;
@@ -104,7 +152,7 @@ function AdminDashboard() {
       .map((t) => [t.createdBy._id || t.createdBy.id, t.createdBy])
   ).values()];
 
-  // Apply filters + sort
+  // Apply filters + sort to main task table
   let displayed = [...tasks];
   if (filterPriority !== 'all') displayed = displayed.filter((t) => t.priority === filterPriority);
   if (filterStatus === 'completed') displayed = displayed.filter((t) => t.completed);
@@ -193,6 +241,175 @@ function AdminDashboard() {
         </Suspense>
       )}
 
+      {/* ================================================================
+          DATE-RANGE REPORT
+          ================================================================ */}
+      <div className="admin-section">
+        <div className="report-header">
+          <div>
+            <h2>📅 Date-range report</h2>
+            <p className="report-subtitle">
+              Reports use task creation dates and are available to administrators only.
+            </p>
+          </div>
+        </div>
+
+        {/* Date pickers + generate */}
+        <div className="report-controls">
+          <div className="report-date-group">
+            <label htmlFor="report-from">From</label>
+            <input
+              id="report-from"
+              type="date"
+              value={reportFrom}
+              onChange={(e) => { setReportFrom(e.target.value); setReportGen(false); }}
+            />
+          </div>
+          <div className="report-date-group">
+            <label htmlFor="report-to">To</label>
+            <input
+              id="report-to"
+              type="date"
+              value={reportTo}
+              onChange={(e) => { setReportTo(e.target.value); setReportGen(false); }}
+            />
+          </div>
+          <button className="btn btn-report" onClick={handleGenerateReport}>
+            Generate report
+          </button>
+        </div>
+
+        {/* Quick presets */}
+        <div className="report-presets">
+          <button
+            className="preset-btn"
+            onClick={() => {
+              const now   = new Date();
+              const first = new Date(now.getFullYear(), now.getMonth(), 1);
+              setReportFrom(first.toISOString().slice(0, 10));
+              setReportTo(now.toISOString().slice(0, 10));
+              setReportGen(false);
+            }}
+          >
+            This month
+          </button>
+          <button
+            className="preset-btn"
+            onClick={() => {
+              setReportFrom('2000-01-01');
+              setReportTo(new Date().toISOString().slice(0, 10));
+              setReportGen(false);
+            }}
+          >
+            All time
+          </button>
+          <button
+            className="preset-btn"
+            onClick={() => {
+              const now  = new Date();
+              const week = new Date(now);
+              week.setDate(now.getDate() - 7);
+              setReportFrom(week.toISOString().slice(0, 10));
+              setReportTo(now.toISOString().slice(0, 10));
+              setReportGen(false);
+            }}
+          >
+            Last 7 days
+          </button>
+        </div>
+
+        {/* Results */}
+        {reportGenerated && reportRows !== null && (
+          <>
+            {/* Summary + CSV button */}
+            <div className="report-summary-row">
+              <div className="report-summary-counts">
+                <span className="report-count">
+                  <strong>{reportRows.length}</strong> tasks created
+                </span>
+                <span className="report-count report-count--green">
+                  <strong>{reportRows.filter((t) => t.completed).length}</strong> completed
+                </span>
+                <span className="report-count report-count--orange">
+                  <strong>{reportRows.filter((t) => !t.completed).length}</strong> pending
+                </span>
+              </div>
+              {reportRows.length > 0 && (
+                <button
+                  className="btn btn-outline btn-csv"
+                  onClick={() =>
+                    downloadCSV(
+                      reportRows,
+                      `report_${reportFrom}_to_${reportTo}.csv`
+                    )
+                  }
+                >
+                  ⬇ Download CSV
+                </button>
+              )}
+            </div>
+
+            {reportRows.length === 0 ? (
+              <p className="no-results">No tasks were created in this date range.</p>
+            ) : (
+              <div className="admin-table-wrap">
+                <table className="admin-table report-table">
+                  <thead>
+                    <tr>
+                      <th>Task</th>
+                      <th>Status</th>
+                      <th>Priority</th>
+                      <th>Created by</th>
+                      <th>Created</th>
+                      <th>Completed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.map((task) => (
+                      <tr key={task._id} className={task.completed ? 'row-done' : ''}>
+                        <td style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
+                          {task.title}
+                        </td>
+                        <td>
+                          <span className={`status-pill ${task.completed ? 'status-pill--done' : 'status-pill--pending'}`}>
+                            {task.completed ? 'Completed' : 'Pending'}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className="priority-badge"
+                            style={{
+                              background: PRIORITY_COLOR[task.priority] + '22',
+                              color: PRIORITY_COLOR[task.priority],
+                            }}
+                          >
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td>
+                          {task.createdBy?.name || '—'}
+                          {task.createdBy?.role && (
+                            <span className="role-tag" style={{ marginLeft: '0.4rem' }}>
+                              {task.createdBy.role}
+                            </span>
+                          )}
+                        </td>
+                        <td>{task.createdAt ? new Date(task.createdAt).toISOString().slice(0, 10) : '—'}</td>
+                        <td>
+                          {task.completed && task.updatedAt
+                            ? new Date(task.updatedAt).toISOString().slice(0, 10)
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {/* ---- Users table ---- */}
       <div className="admin-section">
         <h2>👥 Users ({users.length})</h2>
@@ -244,7 +461,7 @@ function AdminDashboard() {
           <div className="admin-filters">
             <input
               type="text"
-              placeholder="🔍 Search title or user…"
+              placeholder="🔍 Search…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="admin-search"
@@ -315,11 +532,7 @@ function AdminDashboard() {
                         </span>
                       )}
                     </td>
-                    <td>
-                      {task.dueDate
-                        ? new Date(task.dueDate).toLocaleDateString()
-                        : '—'}
-                    </td>
+                    <td>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : '—'}</td>
                     <td>
                       <button
                         className="btn btn-danger"
