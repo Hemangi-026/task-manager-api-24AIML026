@@ -20,6 +20,8 @@ const TaskCard = memo(function TaskCard({ task, user, busyTaskId, onToggle, onDe
     task.createdBy &&
     (task.createdBy._id === user.id || task.createdBy.id === user.id);
 
+  const canDelete = user?.isAdmin || isOwner;
+
   const isBusy = busyTaskId === task._id;
   const creatorName = task.createdBy?.name || 'Unknown';
   const creatorRole = task.createdBy?.role;
@@ -54,7 +56,7 @@ const TaskCard = memo(function TaskCard({ task, user, busyTaskId, onToggle, onDe
           {isBusy ? '…' : task.completed ? 'Undo' : '✓ Complete'}
         </button>
 
-        {isOwner && (
+        {canDelete && (
           <button
             className="btn btn-danger"
             disabled={isBusy}

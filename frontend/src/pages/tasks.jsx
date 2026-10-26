@@ -7,29 +7,24 @@ import TaskCard from '../components/TaskCard';
 import { useAuth } from '../context/AuthContext';
 import { getTasks, createTask, updateTask, deleteTask } from '../api';
 
-/**
- * TaskStats is lazy-loaded — recharts (~180 kB) is NOT in the main bundle.
- * Vite emits it as a separate chunk downloaded only when the user clicks
- * "Show Stats" for the first time.
- */
+// recharts chunk — downloaded only when user clicks "📊 Stats"
 const TaskStats = lazy(() => import('../components/TaskStats'));
 
 function Tasks() {
   const { isAuthenticated, loading: authLoading, logout, user } = useAuth();
   const navigate = useNavigate();
 
-  const [tasks, setTasks]       = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [tasks, setTasks]           = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const [showStats, setShowStats]   = useState(false);
 
-  // Create-task form
-  const [title, setTitle]           = useState('');
+  const [title, setTitle]             = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority]     = useState('medium');
-  const [dueDate, setDueDate]       = useState('');
-  const [creating, setCreating]     = useState(false);
+  const [priority, setPriority]       = useState('medium');
+  const [dueDate, setDueDate]         = useState('');
+  const [creating, setCreating]       = useState(false);
 
   const [busyTaskId, setBusyTaskId] = useState(null);
   const [toast, setToast]           = useState(null);
@@ -60,7 +55,6 @@ function Tasks() {
 
   const handleRetry = () => setRetryCount((c) => c + 1);
 
-  // ---------- Create (optimistic) ----------
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -96,7 +90,6 @@ function Tasks() {
     }
   };
 
-  // ---------- Toggle (useCallback — stable ref for TaskCard memo) ----------
   const handleToggle = useCallback(async (task) => {
     setBusyTaskId(task._id);
     try {
@@ -110,7 +103,6 @@ function Tasks() {
     }
   }, []);
 
-  // ---------- Delete ----------
   const handleDelete = useCallback(async (task) => {
     if (!window.confirm(`Delete "${task.title}"? This can't be undone.`)) return;
     setBusyTaskId(task._id);
@@ -131,10 +123,13 @@ function Tasks() {
 
   return (
     <section className="tasks-page">
-      {/* ---- Header row ---- */}
+      {/* ---- Header ---- */}
       <div className="tasks-header">
         <div>
-          <h1>Tasks</h1>
+          <h1>
+            Tasks
+            {user?.isAdmin && <span className="admin-badge">ADMIN</span>}
+          </h1>
           <p className="subtitle">
             Anyone signed in can leave a task — the owner sees your name and role.
           </p>
@@ -147,7 +142,14 @@ function Tasks() {
         </button>
       </div>
 
-      {/* ---- Lazy-loaded stats panel ---- */}
+      {/* ---- Admin banner ---- */}
+      {user?.isAdmin && (
+        <div className="admin-banner">
+          <strong>⚡ Admin mode:</strong> you can see and delete every user's tasks.
+        </div>
+      )}
+
+      {/* ---- Lazy stats panel ---- */}
       {showStats && (
         <Suspense fallback={<Spinner />}>
           <TaskStats tasks={tasks} />

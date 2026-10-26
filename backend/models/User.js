@@ -15,13 +15,17 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    // Not required at schema level: Google-signed-in users have no password.
+    // Not required: Google-signed-in users have no password.
   },
   role: {
     type: String,
-    // Relationship to the portfolio owner — shown on each task the user creates.
+    // Relationship to the portfolio owner (Teacher, Friend, Recruiter etc.)
     default: 'Visitor',
     trim: true,
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false,
   },
   authProvider: {
     type: String,
@@ -32,18 +36,9 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
-  resetPasswordToken: {
-    type: String,
-    default: null,
-  },
-  resetPasswordExpires: {
-    type: Date,
-    default: null,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+  resetPasswordToken: { type: String, default: null },
+  resetPasswordExpires: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('User', userSchema);

@@ -10,8 +10,22 @@ const sendEmail = require('../utils/sendEmail');
 const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// Emails listed in ADMIN_EMAILS (comma-separated) are automatically admins.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+function isAdminEmail(email) {
+  return ADMIN_EMAILS.includes(email.toLowerCase());
+}
+
 function signToken(user) {
-  return jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  return jwt.sign(
+    { id: user._id, isAdmin: user.isAdmin },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' }
+  );
 }
 
 function publicUser(user) {
@@ -20,6 +34,7 @@ function publicUser(user) {
     name: user.name,
     email: user.email,
     role: user.role,
+    isAdmin: user.isAdmin,
     authProvider: user.authProvider,
   };
 }
@@ -50,6 +65,7 @@ router.post('/register', async (req, res, next) => {
       email,
       password: hashedPassword,
       role,
+      isAdmin: isAdminEmail(email),
       authProvider: 'local',
     });
 
@@ -91,6 +107,12 @@ router.post('/login', async (req, res, next) => {
       });
     }
 
+    // Sync isAdmin in case ADMIN_EMAILS changed since account was created
+    if (user.isAdmin !== isAdminEmail(email)) {
+      user.isAdmin = isAdminEmail(email);
+      await user.save();
+    }
+
     const token = signToken(user);
     res.status(200).json({ success: true, token, data: publicUser(user) });
   } catch (err) {
@@ -125,10 +147,17 @@ router.post('/google', async (req, res, next) => {
         googleId,
         authProvider: 'google',
         role: 'Visitor',
+        isAdmin: isAdminEmail(email),
       });
-    } else if (!user.googleId) {
-      user.googleId = googleId;
-      await user.save();
+    } else {
+      // Link Google ID if first time using Google, and sync admin status
+      let changed = false;
+      if (!user.googleId) { user.googleId = googleId; changed = true; }
+      if (user.isAdmin !== isAdminEmail(email)) {
+        user.isAdmin = isAdminEmail(email);
+        changed = true;
+      }
+      if (changed) await user.save();
     }
 
     const token = signToken(user);
@@ -147,30 +176,24 @@ router.post('/forgot-password', async (req, res, next) => {
     }
 
     const user = await User.findOne({ email });
-
     const genericResponse = {
       success: true,
       message: 'If that email is registered, a reset link has been sent.',
     };
 
-    if (!user) {
-      return res.status(200).json(genericResponse);
-    }
+    if (!user) return res.status(200).json(genericResponse);
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
-
     user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    const resetUrl = `${clientUrl}/reset-password/${rawToken}`;
-
     await sendEmail({
       to: user.email,
       subject: 'Password Reset Request',
-      text: `You requested a password reset. Click this link (valid for 10 minutes): ${resetUrl}\n\nIf you didn't request this, ignore this email.`,
+      text: `Reset your password here (valid 10 min): ${clientUrl}/reset-password/${rawToken}`,
     });
 
     res.status(200).json(genericResponse);
@@ -191,7 +214,6 @@ router.post('/reset-password/:token', async (req, res, next) => {
     }
 
     const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
-
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() },
@@ -219,9 +241,7 @@ router.post('/reset-password/:token', async (req, res, next) => {
 router.get('/me', auth, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    if (!user) {
-      return res.status(404).json({ error: 'Not Found', message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'Not Found', message: 'User not found' });
     res.status(200).json({ success: true, data: publicUser(user) });
   } catch (err) {
     next(err);
@@ -237,14 +257,10 @@ router.put('/me', auth, async (req, res, next) => {
     if (role !== undefined) updates.role = role;
 
     const user = await User.findByIdAndUpdate(req.user.id, updates, {
-      new: true,
-      runValidators: true,
+      new: true, runValidators: true,
     }).select('-password');
 
-    if (!user) {
-      return res.status(404).json({ error: 'Not Found', message: 'User not found' });
-    }
-
+    if (!user) return res.status(404).json({ error: 'Not Found', message: 'User not found' });
     res.status(200).json({ success: true, data: publicUser(user) });
   } catch (err) {
     next(err);

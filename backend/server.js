@@ -91,14 +91,15 @@ app.put('/tasks/:id', auth, validateTaskInput, async (req, res, next) => {
   }
 });
 
-// DELETE /tasks/:id - delete a task (creator only)
+// DELETE /tasks/:id - delete a task (creator or admin)
 app.delete('/tasks/:id', auth, async (req, res, next) => {
   try {
     const existing = await Task.findById(req.params.id);
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Task not found' });
     }
-    if (existing.createdBy.toString() !== req.user.id) {
+    // Admins can delete any task; regular users only their own
+    if (!req.user.isAdmin && existing.createdBy.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: 'You can only delete tasks you created',
