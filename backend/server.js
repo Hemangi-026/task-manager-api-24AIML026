@@ -10,10 +10,12 @@ const auth              = require('./middleware/auth');
 const validateTaskInput = require('./middleware/validateTaskInput');
 const { cache, recordHit, recordMiss, getStats } = require('./utils/cache');
 
+// Practical 10: EventEmitter-based background notification system
+const notifier = require('./utils/notificationEmitter');
+
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
-// Cache key constants — avoids typos across routes
 const CACHE_ALL_TASKS = 'all_tasks';
 const taskKey = (id) => `task_${id}`;
 
@@ -36,17 +38,10 @@ app.use('/', authRoutes);
 // 3. TASK ROUTES (protected)
 // ================================
 
-/**
- * GET /tasks
- * Practical 9: served from cache when available (TTL 60 s).
- * Response headers:
- *   X-Cache          : HIT | MISS
- *   X-Cache-TTL      : seconds remaining (only on HIT)
- *   X-Response-Time  : ms taken to build this response
- */
+// GET /tasks — cache-first (Practical 9)
 app.get('/tasks', auth, async (req, res, next) => {
-  const start   = Date.now();
-  const cached  = cache.get(CACHE_ALL_TASKS);
+  const start  = Date.now();
+  const cached = cache.get(CACHE_ALL_TASKS);
 
   if (cached) {
     recordHit();
@@ -68,17 +63,14 @@ app.get('/tasks', auth, async (req, res, next) => {
     cache.set(CACHE_ALL_TASKS, tasks);
     res.setHeader('X-Cache', 'MISS');
     res.setHeader('X-Response-Time', `${Date.now() - start}ms`);
-    console.log(`[CACHE] GET /tasks → MISS — fetched from DB and cached (60 s TTL)`);
+    console.log('[CACHE] GET /tasks → MISS — fetched from DB and cached (60s TTL)');
     res.json({ success: true, count: tasks.length, data: tasks, fromCache: false });
   } catch (err) {
     next(err);
   }
 });
 
-/**
- * GET /tasks/:id
- * Cached individually per task ID.
- */
+// GET /tasks/:id — per-task cache
 app.get('/tasks/:id', auth, async (req, res, next) => {
   const start  = Date.now();
   const key    = taskKey(req.params.id);
@@ -91,20 +83,16 @@ app.get('/tasks/:id', auth, async (req, res, next) => {
     res.setHeader('X-Cache', 'HIT');
     res.setHeader('X-Cache-TTL', remainingSec);
     res.setHeader('X-Response-Time', `${Date.now() - start}ms`);
-    console.log(`[CACHE] GET /tasks/${req.params.id} → HIT`);
     return res.json({ success: true, data: cached, fromCache: true });
   }
 
   try {
     recordMiss();
     const task = await Task.findById(req.params.id).populate('createdBy', 'name role');
-    if (!task) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
-    }
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
     cache.set(key, task);
     res.setHeader('X-Cache', 'MISS');
     res.setHeader('X-Response-Time', `${Date.now() - start}ms`);
-    console.log(`[CACHE] GET /tasks/${req.params.id} → MISS — cached`);
     res.json({ success: true, data: task, fromCache: false });
   } catch (err) {
     next(err);
@@ -113,49 +101,54 @@ app.get('/tasks/:id', auth, async (req, res, next) => {
 
 /**
  * POST /tasks
- * Invalidates the all-tasks cache so the next GET reflects the new task.
+ * Practical 10: after saving to DB and sending 201, emit 'task-created'.
+ * The emit is FIRE-AND-FORGET — it does NOT block the response.
+ * The API returns ~12 ms; the handler logs after delayMs (default 2000 ms).
  */
 app.post('/tasks', auth, validateTaskInput, async (req, res, next) => {
+  const apiStart = Date.now(); // to show non-blocking in console
+
   try {
     const task      = await Task.create({ ...req.body, createdBy: req.user.id });
     const populated = await task.populate('createdBy', 'name role');
 
-    // Invalidate — new task must appear on next GET /tasks
     cache.del(CACHE_ALL_TASKS);
     console.log('[CACHE] POST /tasks → invalidated all_tasks');
 
+    // ── Practical 10: emit BEFORE sending response so timestamp is accurate ──
+    const simulateError = req.body.simulateNotificationError === true;
+    notifier.emit('task-created', {
+      task:          populated.toObject ? populated.toObject() : populated,
+      user:          populated.createdBy,
+      timestamp:     new Date().toISOString(),
+      simulateError,
+    });
+
+    // API response — returns immediately, before the 2-s handler fires
+    const apiDuration = Date.now() - apiStart;
+    console.log(`[API] POST /tasks responded in ${apiDuration}ms (notification fires asynchronously in ${notifier.delayMs}ms)`);
     res.status(201).json({ success: true, data: populated });
   } catch (err) {
     next(err);
   }
 });
 
-/**
- * PUT /tasks/:id
- * Invalidates both the single-task cache and the all-tasks cache.
- */
+// PUT /tasks/:id
 app.put('/tasks/:id', auth, validateTaskInput, async (req, res, next) => {
   try {
     const existing = await Task.findById(req.params.id);
-    if (!existing) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
-    }
+    if (!existing) return res.status(404).json({ success: false, message: 'Task not found' });
     if (existing.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only edit tasks you created',
-      });
+      return res.status(403).json({ success: false, message: 'You can only edit tasks you created' });
     }
 
     const task = await Task.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+      new: true, runValidators: true,
     }).populate('createdBy', 'name role');
 
-    // Invalidate both caches
     cache.del(taskKey(req.params.id));
     cache.del(CACHE_ALL_TASKS);
-    console.log(`[CACHE] PUT /tasks/${req.params.id} → invalidated task_${req.params.id} + all_tasks`);
+    console.log(`[CACHE] PUT /tasks/${req.params.id} → invalidated`);
 
     res.json({ success: true, data: task });
   } catch (err) {
@@ -165,28 +158,34 @@ app.put('/tasks/:id', auth, validateTaskInput, async (req, res, next) => {
 
 /**
  * DELETE /tasks/:id
- * Invalidates both the single-task cache and the all-tasks cache.
+ * Practical 10: emit 'task-deleted' after removing from DB.
  */
 app.delete('/tasks/:id', auth, async (req, res, next) => {
+  const apiStart = Date.now();
+
   try {
-    const existing = await Task.findById(req.params.id);
-    if (!existing) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
-    }
-    if (!req.user.isAdmin && existing.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only delete tasks you created',
-      });
+    const existing = await Task.findById(req.params.id).populate('createdBy', 'name role');
+    if (!existing) return res.status(404).json({ success: false, message: 'Task not found' });
+    if (!req.user.isAdmin && existing.createdBy._id?.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only delete tasks you created' });
     }
 
     await Task.findByIdAndDelete(req.params.id);
 
-    // Invalidate both caches
     cache.del(taskKey(req.params.id));
     cache.del(CACHE_ALL_TASKS);
-    console.log(`[CACHE] DELETE /tasks/${req.params.id} → invalidated task_${req.params.id} + all_tasks`);
+    console.log(`[CACHE] DELETE /tasks/${req.params.id} → invalidated`);
 
+    // ── Practical 10: emit 'task-deleted' ──
+    notifier.emit('task-deleted', {
+      task:      existing.toObject ? existing.toObject() : existing,
+      user:      existing.createdBy,
+      taskId:    req.params.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    const apiDuration = Date.now() - apiStart;
+    console.log(`[API] DELETE /tasks responded in ${apiDuration}ms (notification fires asynchronously)`);
     res.json({ success: true, message: 'Task deleted successfully' });
   } catch (err) {
     next(err);
@@ -194,16 +193,53 @@ app.delete('/tasks/:id', auth, async (req, res, next) => {
 });
 
 // ================================
-// 4. CACHE DEBUG ENDPOINT
-// GET /cache/stats — shows hit/miss counters, active keys, TTLs
-// Useful for Postman screenshots for the practical report.
+// 4. CACHE DEBUG ENDPOINT (Practical 9)
 // ================================
 app.get('/cache/stats', auth, (req, res) => {
   res.json({ success: true, data: getStats() });
 });
 
 // ================================
-// 5. ERROR HANDLER (must stay last)
+// 5. NOTIFICATION DEBUG ENDPOINTS (Practical 10)
+// ================================
+
+// GET /notifications/logs — recent event log + stats
+app.get('/notifications/logs', auth, (req, res) => {
+  res.json({ success: true, stats: notifier.getStats(), logs: notifier.getLogs() });
+});
+
+// POST /notifications/reset — clear counters + log buffer
+app.post('/notifications/reset', auth, (req, res) => {
+  notifier.clearLogs();
+  res.json({ success: true, message: 'Notification logs and counters cleared' });
+});
+
+// POST /notifications/delay — change simulated slow delay at runtime
+app.post('/notifications/delay', auth, (req, res) => {
+  try {
+    const newDelay = notifier.setDelay(req.body.delayMs);
+    res.json({ success: true, message: `Delay updated to ${newDelay}ms` });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// POST /notifications/simulate-error — fires a task-created event that throws
+app.post('/notifications/simulate-error', auth, (req, res) => {
+  notifier.emit('task-created', {
+    task:          { title: 'Simulated Error Task', _id: 'simulated' },
+    user:          { name: 'Test User' },
+    timestamp:     new Date().toISOString(),
+    simulateError: true,
+  });
+  res.json({
+    success: true,
+    message: 'Error simulation dispatched — check server console and GET /notifications/logs',
+  });
+});
+
+// ================================
+// 6. ERROR HANDLER (must stay last)
 // ================================
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -219,4 +255,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`[Notification System] EventEmitter ready — delay: ${notifier.delayMs}ms`);
 });
