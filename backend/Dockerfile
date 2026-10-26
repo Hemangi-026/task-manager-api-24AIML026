@@ -3,7 +3,7 @@
 # Node.js 20 + Express API
 # =============================================================================
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 LABEL maintainer="Hemangi Parmar <24aiml026@charusat.edu.in>"
 LABEL description="Task Manager Express + MongoDB API"
@@ -15,8 +15,8 @@ WORKDIR /app
 # npm install only re-runs when package.json/lock changes.
 COPY package.json package-lock.json ./
 
-# Install only production dependencies (no devDependencies / nodemon)
-RUN npm ci --omit=dev
+# Install only production dependencies
+RUN npm install --omit=dev --no-audit
 
 # Copy the rest of the backend source code
 COPY . .

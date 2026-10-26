@@ -11,7 +11,7 @@
 # =============================================================================
 
 # ---- Stage 1: Build ----
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ WORKDIR /app
 # on subsequent builds if neither file changed.
 COPY package.json package-lock.json ./
 
-RUN npm ci
+RUN npm install --no-audit
 
 # Build-time argument: the browser needs to know where the API lives.
 # Passed in from docker-compose.yml via `args:`.
