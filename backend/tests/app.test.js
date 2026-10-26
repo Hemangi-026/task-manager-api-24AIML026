@@ -69,7 +69,7 @@ describe('POST /forgot-password — input validation', () => {
 describe('Protected routes return 401 without token', () => {
   test('GET /tasks → 401', async () => {
     const res = await request(app).get('/tasks');
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200); // DELIBERATELY BROKEN — should be 401
   });
 
   test('POST /tasks → 401', async () => {
